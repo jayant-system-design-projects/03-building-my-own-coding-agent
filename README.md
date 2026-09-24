@@ -1,55 +1,82 @@
 # Building My Own Coding Agent 🤖
 
-A small Python coding agent that I am building while working through the [Build Your Own Claude Code](https://codecrafters.io) challenge from CodeCrafters.
+A small Python coding agent that I am building while working through the [Build Your Own Claude Code](https://app.codecrafters.io/courses/claude-code) challenge from CodeCrafters.
 
-The goal is to understand what actually happens inside tools like Claude Code or Cursor: how a model is handed a set of tools, how it decides to call one, who actually runs the code, and how a single prompt turns into a loop that keeps working until the task is finished.
+Most people treat coding agents as magic. They are not. Underneath, a tool-calling agent is a message list, a dictionary of functions, and a loop, and the fastest way to prove that to yourself is to write one.
 
-No LangChain. No LlamaIndex. No agent framework. Just an OpenAI-compatible client, a plain Python loop, and a handful of functions the model is allowed to call. I wanted to find out how much of an agent is real engineering and how much of it is a `while` loop wearing a suit.
+So this is a reactive agent written directly against the raw chat-completions API. No LangChain, no LlamaIndex, no agent framework of any kind — just an OpenAI-compatible client, a plain Python loop, and a handful of functions the model is allowed to ask for. Every part that makes it an agent is code in this repo.
+
+The point of the project is the mechanism: how a model is told which tools exist, what it actually sends back when it wants one, who runs the code, and how feeding that result into the conversation turns a single prompt into an agent that keeps working until the task is finished.
 
 Small note before the agent starts talking: this README is the only part AI wrote. The agent loop, the tool schemas, the tool registry, the dispatch logic, and the iteration control are all code I wrote myself. AI handled the typing cardio; I handled the agent workout. Fair deal.
 
 ## What It Does
 
-Right now, this agent can:
+Give it a task, and it will go and do the task:
 
-- take a task from the command line with `-p "your task"`
-- send that task to an LLM together with the list of tools it is allowed to use
-- read the model's tool calls, run the real Python functions behind them, and feed the results back
-- keep looping until the model says it is done, instead of answering after one shot
-- read a file from any path
+- read any file on the machine
 - write a file, creating it if it does not exist
-- detect whether it is running on Windows, Linux, or macOS
-- run real shell commands through the correct shell for that OS
-- chain all of the above, so "find where `read_file` is defined and tell me what it does" becomes several tool calls in a row without me scripting them
-- cap how long it is allowed to think with `low`, `medium`, and `high` modes
+- work out whether it is on Windows, Linux, or macOS
+- run real shell commands through the right shell for that OS
+- and, the part that makes it an *agent*, keep doing all of the above until the job is actually finished
 
-It is still a learning project, but the core flow is real: prompt in, tools offered, tools called, results fed back, loop until solved.
+That last point is the difference between a chatbot and an agent. A chatbot answers once. This thing reads a file, realises it needs another one, goes and gets it, and only then answers.
+
+It is still a learning project, but nothing about the core flow is fake: prompt in, tools offered, tools called, results fed back, loop until solved.
 
 ## Quick Demo
+
+The simple stuff works like you would expect:
 
 ```bash
 $ python -m app.main -p "what OS am I on?"
 Windows
 
-$ python -m app.main -p "read README.md and tell me what this project does"
-This project is a small coding agent built in Python...
-
-$ python -m app.main -p "create a file test.py that prints hello"
-File test.py is create successfully and content is written in it.
-
-$ python -m app.main -p "find where read_file is defined and explain what it returns"
-# agent calls bash_tool to search, then read_file on app/tools/read_tools.py,
-# then answers from what it actually read
-
-$ python -m app.main -p "list every python file under app/ and count them"
-# agent calls check_platform_system first, then bash_tool with the right command
+$ python -m app.main -p "create a file hello.py that prints hello world"
+File hello.py is create successfully and content is written in it.
 ```
 
-The second to last one is the interesting one. I never told it to search *then* read. It decided that on its own, because one tool call was not enough to answer.
+But this is the one I actually care about:
+
+```bash
+$ python -m app.main -p "find where read_file is defined and explain what it returns"
+```
+
+Nothing about that task can be answered in one shot. The model does not know where the function lives, so here is what actually happens behind that single line:
+
+```text
+iteration 1   model: "I need to look around."     -> calls check_platform_system
+              result: "Windows"
+
+iteration 2   model: "Now I can search properly."  -> calls bash_tool
+              result: app/tools/read_tools.py
+
+iteration 3   model: "Let me read that."           -> calls read_file
+              result: <the file contents>
+
+iteration 4   model: finish_reason = "stop"
+              "read_file opens the path, returns the contents, and returns a
+               plain message instead of raising if the file is missing."
+```
+
+Four round trips. I wrote none of those steps. I did not write "first check the OS, then search, then read". I only wrote the loop that lets it keep going, and a dictionary of things it is allowed to ask for. The sequencing is the model's.
+
+That is the moment this project stopped being homework and got interesting.
 
 ## The Loop
 
-This is the whole idea in one picture. Everything else in the repo exists to serve this loop.
+This is what "reactive agent" actually means, step by step:
+
+1. send the model the task plus the **tool schemas** — just names, descriptions, and parameters
+2. the model replies with `finish_reason: "tool_calls"` and names the tool it wants
+3. my code looks that name up in the registry, parses the JSON arguments, and runs the real Python function
+4. the result goes back into the message list as `{"role": "tool", ...}`
+5. loop — the model now picks its next move knowing what it just learned
+6. when it finally replies with `finish_reason: "stop"`, the task is done
+
+Step 5 is the whole idea. The result does not get stashed in a variable somewhere, it goes back into the conversation. Every decision is a *reaction* to the previous result, which is exactly the difference between a chatbot and an agent.
+
+In one picture:
 
 ```text
                     python -m app.main -p "task"
@@ -98,45 +125,45 @@ This is the whole idea in one picture. Everything else in the repo exists to ser
               +-------------> back to the LLM, one iteration older
 ```
 
-The model never touches my filesystem. It only ever says *"I would like to call `read_file` with this path"*. My code decides whether that name exists in the registry, and my code runs it. That separation is the entire safety story of a tool-calling agent, and it is also the part I misunderstood before building this.
+Look at what crosses the boundary on the left: **schemas only**. The model gets descriptions of what exists. It never gets a single callable. When it wants something done it says *"I would like to call `read_file` with this path"*, and my code decides whether that name is in the registry and runs it.
+
+That is the entire safety story of a tool-calling agent, and it is the part most explanations skip over.
 
 ## How It Works
 
-### 1. Entry Point
+### 1. Where it starts
 
-Everything starts in `app/main.py`.
-
-It parses a single `-p` argument, merges the three tool groups into one `ALL_TOOLS` dictionary, and hands both the task and the tools to the agent handler. That is it. `main.py` stays boring on purpose, because the interesting part is one layer down.
+`app/main.py`, and it is deliberately dull:
 
 ```python
 ALL_TOOLS = {**READ_TOOLS, **WRITE_TOOLS, **BASH_TOOLS}
 response = _call_reactive_agent(args.p, ALL_TOOLS)
 ```
 
-Adding a new capability to the agent means adding one more dictionary to that merge. Nothing else changes.
+Parse one `-p` argument, merge the tool groups, hand it all to the agent. Giving the agent a new power later means adding one more dictionary to that merge. Nothing else changes, which is the sort of thing you only appreciate after you have written the messy version first.
 
-### 2. The Tool Registry
+### 2. How the model finds out what it can do
 
-Every tool in this project has the same shape: a name mapped to a schema and a real Python function.
+Every tool here is the same two things wearing one name:
 
 ```python
 READ_TOOLS = {
     "read_file": {
-        "schema":   { ...JSON schema the model sees... },
-        "function": __read_file,   # the actual Python callable
+        "schema":   { ...what the model sees... },
+        "function": __read_file,   # what actually runs
     },
 }
 ```
 
-This shape is the whole trick. The **schema** is the only thing that goes to the model, and it is just the description, the parameter names, and the types. The **function** never leaves my process. When a tool call comes back, the name in the response is used as a key into this same dictionary to find the callable.
+The **schema** travels to the model. The **function** never leaves my process. When a tool call comes back, the name in that response is just a dictionary key, and looking it up is how a sentence from a language model turns into a Python function call.
 
-The functions themselves are name mangled (`__read_file`), so they are not importable from outside their module. The registry is the only door in.
+The functions are name mangled (`__read_file`) so nothing outside the module can import them. The registry is the only door in, and I am the doorman.
 
-### 3. Tool Schemas Are Typed, Not Hand Written JSON
+### 3. Why the schemas are Pydantic and not raw JSON
 
-Tool schemas live in `app/schemas/base_tool_schema.py` and are built with Pydantic instead of being written out as raw dictionaries.
+I wrote them as plain dictionaries first. It was fine for one tool and awful by the third, because the format uses `type` as a key in three different nested places and every typo produced a model that behaved *slightly* wrong rather than crashing.
 
-The reason is that the provider format uses `type` as a key in three different places, which is awkward to declare directly on a model. So the fields get safe Python names and are aliased back:
+So they became Pydantic models in `app/schemas/base_tool_schema.py`, with safe Python names aliased back to the wire format:
 
 ```python
 class Properties(BaseModel):
@@ -144,9 +171,9 @@ class Properties(BaseModel):
     description: str
 ```
 
-and then dumped with `by_alias=True` so the wire format comes out exactly as the API expects.
+and dumped with `by_alias=True` at the end.
 
-There is also a validator that I added after being burned once:
+Then there is the validator I added after losing an evening:
 
 ```python
 @model_validator(mode="after")
@@ -156,37 +183,25 @@ def validate_required(self):
         raise ValueError(f"Required properties not defined: {sorted(missing)}")
 ```
 
-If I mark a parameter as required but forget to actually define it, this fails immediately with a clear message instead of failing later as a confusing model response. Schema bugs are silent bugs, and silent bugs are the expensive kind.
+I had marked a parameter as required and never defined it. Nothing crashed. The agent just got quietly stupid for an hour. Now it refuses to start instead, which is the kind of loudness I have learned to appreciate.
 
-### 4. The Reactive Agent Loop
+### 4. The loop that makes it an agent
 
-This lives in `app/handlers/reactive_agent_handlers.py`, and it is the heart of the project.
+`app/handlers/reactive_agent_handlers.py`. Five lines of English:
 
-The loop is:
+1. send the messages and the tool schemas to the model
+2. look at `finish_reason`
+3. if it is `stop` and nothing was requested, we are done, return the answer
+4. if tools were requested, run them, append the assistant message and every result to `messages`, go to 1
+5. give up at `max_iteration` no matter what
 
-1. send `messages` plus the tool schemas to the model
-2. read `finish_reason`
-3. if it is `stop` and there are no tool calls, the task is solved, so return the content
-4. if there are tool calls, run them, append the assistant message and every tool result to `messages`, and loop again
-5. stop unconditionally once `max_iteration` is reached
+Step 4 is the whole thing. The results do not go into a variable somewhere, they go back into the conversation. So the model's next decision is made knowing everything it has found so far. That is why it is called a *reactive* agent: every move is a reaction to what the last move turned up.
 
-Point 4 is why this is a **reactive** agent rather than a one shot function caller. Each result goes back into the conversation, so the model's next decision is made with everything it has learned so far.
+Before I wrote this I assumed there was something more sophisticated in here. There is not. It is a `while` loop and a growing list.
 
-The example that made it click for me:
+### 5. Who actually runs the code
 
-> *"I want to know where the `read_file` function is and what is in it, starting from README.md."*
-
-- **Iteration 1** - the model cannot answer yet, so it calls `read_file` on `README.md`
-- **Iteration 2** - now it knows the path, so it calls `read_file` again on `app/tools/read_tools.py`
-- **Iteration 3** - it finally has enough context, returns `finish_reason: "stop"`, and answers
-
-Nobody scripted those three steps. The loop just kept asking, and the model kept getting closer.
-
-### 5. Tool Dispatch
-
-Dispatch is a separate function on purpose, so the loop itself stays readable.
-
-For each tool call in the model's response it looks up the name in the registry, parses the arguments JSON, calls the function, and wraps the output in the message shape the API requires:
+Dispatch lives in its own function so the loop stays readable. For each requested tool: look up the name, `json.loads` the arguments, call the function, and hand the output back in the shape the API wants.
 
 ```python
 {
@@ -196,25 +211,25 @@ For each tool call in the model's response it looks up the name in the registry,
 }
 ```
 
-The `tool_call_id` is not optional decoration. When a model requests three tools in one turn, that ID is the only thing telling the model which result belongs to which request.
+That `tool_call_id` is not decoration. When the model asks for three tools at once, it is the only thing telling it which answer belongs to which question. Drop it and the model gets three results and no idea which is which.
 
-A name that is not in the registry is simply skipped. The model can ask for anything it likes; it only gets what I registered.
+And if the model asks for a tool that is not in my registry? Nothing happens. It gets skipped. The model can ask for `delete_everything` all day; it only ever receives what I registered.
 
-### 6. The Tools
+### 6. The four tools
 
-**`read_file`** (`app/tools/read_tools.py`) resolves the path with `os.path.abspath` and returns the file contents. A missing file or a permission error comes back as a plain sentence rather than an exception, because a crash ends the agent while a sentence lets the model try something else.
+**`read_file`** resolves the path and returns the contents. If the file is missing it returns the sentence *"File x does not exist"* rather than raising, and that choice matters more than it looks. See below.
 
-**`write_file`** (`app/tools/write_tools.py`) opens the path with `Path(...).open("w")`, creating the file if needed, and reports back whether it worked.
+**`write_file`** writes, creating the file if needed, and reports back whether it worked.
 
-**`check_platform_system`** (`app/tools/bash_tools.py`) returns `platform.system()`. It is a tool that takes no parameters at all, which is why an empty `Parameters()` with `required=[]` had to be legal in the schema.
+**`check_platform_system`** returns `platform.system()` and takes no parameters at all, which is the tool that forced my schema code to accept an empty parameter list.
 
-**`bash_tool`** (`app/tools/bash_tools.py`) runs a shell command and returns `stdout`, `stderr`, and `return_code` as three separate fields. It picks `cmd.exe` on Windows and `/bin/bash` elsewhere, which is exactly why `check_platform_system` exists: the model should find out which OS it is on *before* it guesses at command syntax.
+**`bash_tool`** runs a command through `cmd.exe` or `/bin/bash` and returns `stdout`, `stderr`, and `return_code` as three separate fields. It exists alongside `check_platform_system` for a reason: I want the model to *find out* which OS it is on before it starts guessing at command syntax, instead of confidently sending `ls` to `cmd.exe`.
 
-Returning the return code separately matters more than it looks. A command that failed silently and a command that succeeded with no output are identical if all you hand back is stdout.
+Returning the return code separately sounds pedantic until you notice that "the command failed silently" and "the command worked and printed nothing" look identical if all you hand back is stdout.
 
-### 7. Modes and the Iteration Cap
+### 7. Why there is a limit
 
-Modes are defined in `app/config.py` and decide how many times the loop may run:
+`app/config.py` decides how many times the loop may run:
 
 | mode | max iterations |
 |---|---|
@@ -222,7 +237,7 @@ Modes are defined in `app/config.py` and decide how many times the loop may run:
 | `medium` | 5 |
 | `high` | 15 |
 
-An agent loop without a cap is an infinite loop with a billing address. If a model gets stuck calling the same tool over and over, the cap is the thing that stops it. Simple tasks run fine in `low`; multi file exploration is what `high` is for.
+I watched a model call the same tool four times in a row once, getting the same result each time and being no closer to an answer. An agent loop with no cap is an infinite loop with a billing address. Simple tasks are happy in `low`; poking around a whole codebase is what `high` is for.
 
 ## Project Structure
 
@@ -243,15 +258,13 @@ pyproject.toml                     # Project metadata
 
 ## Run Locally
 
-This project uses Python 3.14+.
-
-Install dependencies:
+Python 3.14+.
 
 ```bash
 uv sync
 ```
 
-Set up model access in a `.env` file:
+Put your model access in a `.env`:
 
 ```bash
 OPENROUTER_API_KEY=your_key_here
@@ -262,36 +275,31 @@ MAX_ITERATIONS_MEDIUM_MODE=5
 MAX_ITERATIONS_HIGH_MODE=15
 ```
 
-Only `OPENROUTER_API_KEY` is actually required; everything else has a default.
-
-Run the agent:
+Only the API key is actually required, the rest have defaults.
 
 ```bash
 python -m app.main -p "your task here"
 ```
 
-Tasks to try:
+Things worth trying, roughly in order of how much they show off:
 
 ```bash
 python -m app.main -p "what operating system am I on?"
 python -m app.main -p "read app/config.py and explain the settings"
 python -m app.main -p "create hello.py that prints hello world"
-python -m app.main -p "list all python files under app/"
 python -m app.main -p "find where write_file is defined and summarise it"
 ```
 
-One warning worth repeating: the agent has a `bash_tool` and a `write_file` tool, so it can genuinely change your machine. Point it at a directory you are willing to let it touch.
+One honest warning: this thing has a shell and a writer. It can genuinely change your machine. Point it at a folder you are willing to let it touch.
 
 ## What I Learned
 
-The biggest realisation was how little magic there is. An agent is a `while` loop, a list of messages, and a dictionary of functions. Everything a framework adds on top of that is convenience, not capability, which is exactly why building it without a framework taught me more than using one would have.
+**The model never runs anything.** It returns a name and some JSON. My code does the lookup, my code parses the arguments, my code makes the call. Seeing it written out is what turns "how do AI agents edit files?" into "somebody wrote an `open()` call and told the model it exists". Less magic than people expect, and far more controllable.
 
-The model never executes anything. It only ever returns a name and some JSON arguments. My code does the lookup, my code parses the arguments, my code calls the function. Once that landed, "how do AI agents edit files?" stopped being mysterious and became "somebody wrote an `open()` call and told the model it exists".
+**Tool descriptions are part of the program.** The schema is not documentation the model skims, it is the only information it has when deciding whether a tool fits. A vague description does not throw an error. It produces an agent that quietly picks the wrong tool and gives you a confident wrong answer, which is a far worse failure than a crash.
 
-Tool descriptions turned out to be part of the program. The schema is not documentation the model skims past, it is the only thing the model has when deciding whether a tool fits the task. A vague description does not throw an error, it just produces an agent that quietly picks the wrong tool. That is a much worse failure than a crash.
+**Errors should be returned, not raised.** My instinct was to let `FileNotFoundError` propagate, and it took a few dead loops to see why that is wrong. A raised exception ends the agent. A returned sentence goes into `messages`, the model reads *"that file does not exist"*, and tries a different path on the next iteration. Error handling in an agent is not about protecting the program. It is about keeping the conversation alive long enough for the model to recover.
 
-Errors should be returned, not raised. My first instinct was to let `FileNotFoundError` propagate. But a raised exception ends the loop, while a returned sentence like *"File x does not exist"* goes into `messages` and lets the model recover on the next iteration. Error handling in an agent is not about protecting the program, it is about keeping the conversation alive.
-
-And the iteration cap is not a nice to have. The first time I watched a model call the same tool again and again, converging on nothing, I understood why every real agent ships with a budget.
+**Frameworks sell convenience, not capability.** I went in assuming LangChain must be doing something I could not. It is a message list, a dictionary of functions, and a loop. Every abstraction on top of that is ergonomics. Worth using, absolutely, but worth building once first so you know what it is hiding.
 
 It is a small project, but it made agents feel much less mysterious. Turns out the agent was just a loop all along, and honestly, that was the reaction I was hoping for. 🤖
