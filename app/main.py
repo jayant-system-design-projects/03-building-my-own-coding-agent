@@ -1,7 +1,11 @@
 import argparse
 import sys
-from openai import OpenAI
-from app.config import Config
+from app.handlers.reactive_agent_handlers import _call_reactive_agent
+from app.tools.read_tools import READ_TOOLS
+from app.tools.write_tools import WRITE_TOOLS
+from app.tools.bash_tools import BASH_TOOLS
+
+ALL_TOOLS = {**READ_TOOLS, **WRITE_TOOLS, **BASH_TOOLS}
 
 
 def main():
@@ -9,23 +13,16 @@ def main():
     p.add_argument("-p", required=True)
     args = p.parse_args()
 
-    if not Config.API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY is not set")
-
-    client = OpenAI(api_key=Config.API_KEY, base_url=Config.BASE_URL)
-
-    chat = client.chat.completions.create(
-        model=Config.MODEL_NAME,
-        messages=[{"role": "user", "content": args.p}],
-    )
-
-    if not chat.choices or len(chat.choices) == 0:
-        raise RuntimeError("no choices in response")
+    try:
+        response = _call_reactive_agent(args.p, ALL_TOOLS)
+    except Exception as e:
+        print(e.__str__())
+        return
 
     # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!", file=sys.stderr)
 
-    print(chat.choices[0].message.content)
+    print(response)
 
 
 if __name__ == "__main__":
