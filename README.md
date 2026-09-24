@@ -69,38 +69,38 @@ Here is a real task running through the loop. I asked it *"find where `read_file
 
 ```mermaid
 sequenceDiagram
-    autonumber
-    actor Me
-    participant Loop as 🔁 Agent Loop
-    participant LLM as 🧠 Model
-    participant Tools as ⚙️ Real Python Functions
+    participant Me
+    participant Loop as Agent Loop
+    participant LLM as Model
+    participant Fn as Real Python Functions
 
-    Me->>Loop: "find where read_file is defined"
+    Me->>Loop: find where read_file is defined
+
     Note over Loop: iteration 1
     Loop->>LLM: messages + tool schemas
-    LLM-->>Loop: finish_reason "tool_calls"<br/>check_platform_system()
-    Loop->>Tools: platform.system()
-    Tools-->>Loop: "Windows"
-    Loop->>Loop: append tool result to messages
+    LLM-->>Loop: tool_calls - check_platform_system
+    Loop->>Fn: platform.system
+    Fn-->>Loop: Windows
+    Note over Loop: append result to messages
 
     Note over Loop: iteration 2
-    Loop->>LLM: messages (now with OS)
-    LLM-->>Loop: finish_reason "tool_calls"<br/>bash_tool("findstr /s read_file")
-    Loop->>Tools: subprocess.run(...)
-    Tools-->>Loop: app/tools/read_tools.py
-    Loop->>Loop: append tool result to messages
+    Loop->>LLM: messages now include the OS
+    LLM-->>Loop: tool_calls - bash_tool
+    Loop->>Fn: subprocess.run
+    Fn-->>Loop: app/tools/read_tools.py
+    Note over Loop: append result to messages
 
     Note over Loop: iteration 3
-    Loop->>LLM: messages (now with file path)
-    LLM-->>Loop: finish_reason "tool_calls"<br/>read_file("app/tools/read_tools.py")
-    Loop->>Tools: open(path).read()
-    Tools-->>Loop: file contents
-    Loop->>Loop: append tool result to messages
+    Loop->>LLM: messages now include the path
+    LLM-->>Loop: tool_calls - read_file
+    Loop->>Fn: open and read the file
+    Fn-->>Loop: file contents
+    Note over Loop: append result to messages
 
     Note over Loop: iteration 4
-    Loop->>LLM: messages (now with the code)
-    LLM-->>Loop: finish_reason "stop" ✅
-    Loop-->>Me: "read_file opens the path, returns the<br/>contents, and returns a plain message<br/>instead of raising if the file is missing."
+    Loop->>LLM: messages now include the code
+    LLM-->>Loop: stop - task complete
+    Loop-->>Me: read_file returns the contents, and a plain message if the file is missing
 ```
 
 **Four round trips. I scripted none of them.**
