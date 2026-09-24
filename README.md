@@ -28,43 +28,30 @@ The point of this repo is the *mechanism*: how a model is told which tools exist
 
 ```mermaid
 flowchart TD
-    CLI["🖥️ CLI<br/>python -m app.main -p 'task'"]
-
-    subgraph REG["📦 Tool Registry — app/tools/"]
-        direction LR
-        R["read_tools<br/>read_file"]
-        W["write_tools<br/>write_file"]
-        B["bash_tools<br/>check_platform_system<br/>bash_tool"]
-    end
-
-    ALL["🗂️ ALL_TOOLS<br/>name → schema + function"]
-
-    subgraph LOOP["🔁 Reactive Agent Loop — app/handlers/"]
-        MSG["💬 messages[]<br/>system · user · assistant · tool"]
-        LLM["🧠 LLM<br/>chat.completions"]
-        CHK{"finish_reason?"}
-        DISP["⚙️ Dispatch<br/>lookup name<br/>parse JSON args<br/>call the function"]
-    end
-
+    CLI["🖥️ CLI<br/>uv run python -m app.main -p task"]
+    ALL["🗂️ ALL_TOOLS registry<br/>read_file · write_file<br/>check_platform_system · bash_tool"]
+    MSG["💬 messages<br/>system · user · assistant · tool"]
+    LLM["🧠 LLM<br/>chat.completions"]
+    CHK{"finish_reason?"}
+    DISP["⚙️ Dispatch<br/>look up the name<br/>parse the JSON args<br/>call the function"]
+    FN["🐍 Real Python functions<br/>open · Path.write · subprocess.run"]
     OUT["✅ Final answer"]
 
     CLI --> ALL
-    R --> ALL
-    W --> ALL
-    B --> ALL
-    ALL -- schemas only --> MSG
-    CLI -- task --> MSG
+    CLI -->|the task| MSG
+    ALL -->|schemas only| MSG
     MSG --> LLM
     LLM --> CHK
-    CHK -- stop --> OUT
-    CHK -- tool_calls --> DISP
-    DISP -- calls real functions --> REG
-    DISP -- tool results --> MSG
+    CHK -->|stop| OUT
+    CHK -->|tool_calls| DISP
+    DISP --> FN
+    FN -->|tool results| MSG
 
     style CLI fill:#1f6feb,stroke:#1f6feb,color:#fff
     style ALL fill:#8250df,stroke:#8250df,color:#fff
     style LLM fill:#bf3989,stroke:#bf3989,color:#fff
     style DISP fill:#bc4c00,stroke:#bc4c00,color:#fff
+    style FN fill:#0969da,stroke:#0969da,color:#fff
     style OUT fill:#1a7f37,stroke:#1a7f37,color:#fff
 ```
 
@@ -155,20 +142,20 @@ That is why it is called a reactive agent, and it is the only thing separating t
 The simple stuff works like you would expect:
 
 ```bash
-$ python -m app.main -p "what OS am I on?"
+$ uv run python -m app.main -p "what OS am I on?"
 Windows
 
-$ python -m app.main -p "create a file hello.py that prints hello world"
+$ uv run python -m app.main -p "create a file hello.py that prints hello world"
 File hello.py is create successfully and content is written in it.
 ```
 
 The interesting stuff is anything that needs more than one step:
 
 ```bash
-$ python -m app.main -p "find where read_file is defined and explain what it returns"
+$ uv run python -m app.main -p "find where read_file is defined and explain what it returns"
 # → 4 tool calls, sequenced by the model, see the diagram above
 
-$ python -m app.main -p "list every python file under app/ and count them"
+$ uv run python -m app.main -p "list every python file under app/ and count them"
 # → checks the OS first, then picks the right command for that shell
 ```
 
@@ -335,27 +322,28 @@ uv sync
 Put your model access in a `.env`:
 
 ```bash
-OPENROUTER_API_KEY=your_key_here
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_MODEL_NAME=nvidia/nemotron-3-ultra-550b-a55b:free
+MODEL_API_KEY=your_key_here
+MODEL_BASE_URL=https://openrouter.ai/api/v1
+MODEL_NAME=nvidia/nemotron-3-ultra-550b-a55b:free
 MAX_ITERATIONS_LOW_MODE=5
 MAX_ITERATIONS_MEDIUM_MODE=5
 MAX_ITERATIONS_HIGH_MODE=15
 ```
 
 Only the API key is required — everything else has a default.
+Free keys are available from [OpenRouter](https://openrouter.ai) or [NVIDIA](https://build.nvidia.com/models).
 
 ```bash
-python -m app.main -p "your task here"
+uv run python -m app.main -p "your task here"
 ```
 
 Worth trying, roughly in order of how much they show off:
 
 ```bash
-python -m app.main -p "what operating system am I on?"
-python -m app.main -p "read app/config.py and explain the settings"
-python -m app.main -p "create hello.py that prints hello world"
-python -m app.main -p "find where write_file is defined and summarise it"
+uv run python -m app.main -p "what operating system am I on?"
+uv run python -m app.main -p "read app/config.py and explain the settings"
+uv run python -m app.main -p "create hello.py that prints hello world"
+uv run python -m app.main -p "find where write_file is defined and summarise it"
 ```
 
 > ⚠️ **This thing has a shell and a writer.** It can genuinely change your machine. Point it at a folder you are willing to let it touch.
