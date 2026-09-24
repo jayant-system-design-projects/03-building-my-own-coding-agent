@@ -11,3 +11,12 @@ class Config:
     MODEL_NAME = os.getenv(
         "OPENROUTER_MODEL_NAME", "nvidia/nemotron-3-ultra-550b-a55b:free"
     )
+
+    MAX_ITERATIONS_LOW_MODE = int(os.getenv("MAX_ITERATIONS_LOW_MODE", 5))
+    MAX_ITERATIONS_MEDIUM_MODE = int(os.getenv("MAX_ITERATIONS_MEDIUM_MODE", 5))
+    MAX_ITERATIONS_HIGH_MODE = int(os.getenv("MAX_ITERATIONS_HIGH_MODE", 15))
+    REACTIVE_AGENT_MODES = {
+        "low": MAX_ITERATIONS_LOW_MODE,
+        "medium": MAX_ITERATIONS_MEDIUM_MODE,
+        "high": MAX_ITERATIONS_HIGH_MODE,
+    }
