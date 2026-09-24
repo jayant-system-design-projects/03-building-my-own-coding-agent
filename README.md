@@ -231,11 +231,11 @@ Returning the return code separately sounds pedantic until you notice that "the 
 
 `app/config.py` decides how many times the loop may run:
 
-| mode | max iterations |
-|---|---|
-| `low` | 5 |
-| `medium` | 5 |
-| `high` | 15 |
+| mode       | max iterations |
+| ---------- | -------------- |
+| `low`    | 5              |
+| `medium` | 5              |
+| `high`   | 15             |
 
 I watched a model call the same tool four times in a row once, getting the same result each time and being no closer to an answer. An agent loop with no cap is an infinite loop with a billing address. Simple tasks are happy in `low`; poking around a whole codebase is what `high` is for.
 
@@ -278,16 +278,16 @@ MAX_ITERATIONS_HIGH_MODE=15
 Only the API key is actually required, the rest have defaults.
 
 ```bash
-python -m app.main -p "your task here"
+uv run python -m app.main -p "your task here"
 ```
 
 Things worth trying, roughly in order of how much they show off:
 
 ```bash
-python -m app.main -p "what operating system am I on?"
-python -m app.main -p "read app/config.py and explain the settings"
-python -m app.main -p "create hello.py that prints hello world"
-python -m app.main -p "find where write_file is defined and summarise it"
+uv run python -m app.main -p "what operating system am I on?"
+uv run python -m app.main -p "read app/config.py and explain the settings"
+uv run python -m app.main -p "create hello.py that prints hello world"
+uv run python -m app.main -p "find where write_file is defined and summarise it"
 ```
 
 One honest warning: this thing has a shell and a writer. It can genuinely change your machine. Point it at a folder you are willing to let it touch.
