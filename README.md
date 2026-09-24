@@ -70,37 +70,37 @@ Here is a real task running through the loop. I asked it *"find where `read_file
 ```mermaid
 sequenceDiagram
     participant Me
-    participant Loop as Agent Loop
-    participant LLM as Model
+    participant Agent as Agent Loop
+    participant Model
     participant Fn as Real Python Functions
 
-    Me->>Loop: find where read_file is defined
+    Me->>Agent: find where read_file is defined
 
-    Note over Loop: iteration 1
-    Loop->>LLM: messages + tool schemas
-    LLM-->>Loop: tool_calls - check_platform_system
-    Loop->>Fn: platform.system
-    Fn-->>Loop: Windows
-    Note over Loop: append result to messages
+    Note over Agent: iteration 1
+    Agent->>Model: messages + tool schemas
+    Model-->>Agent: tool_calls - check_platform_system
+    Agent->>Fn: platform.system
+    Fn-->>Agent: Windows
+    Note over Agent: append result to messages
 
-    Note over Loop: iteration 2
-    Loop->>LLM: messages now include the OS
-    LLM-->>Loop: tool_calls - bash_tool
-    Loop->>Fn: subprocess.run
-    Fn-->>Loop: app/tools/read_tools.py
-    Note over Loop: append result to messages
+    Note over Agent: iteration 2
+    Agent->>Model: messages now include the OS
+    Model-->>Agent: tool_calls - bash_tool
+    Agent->>Fn: subprocess.run
+    Fn-->>Agent: app/tools/read_tools.py
+    Note over Agent: append result to messages
 
-    Note over Loop: iteration 3
-    Loop->>LLM: messages now include the path
-    LLM-->>Loop: tool_calls - read_file
-    Loop->>Fn: open and read the file
-    Fn-->>Loop: file contents
-    Note over Loop: append result to messages
+    Note over Agent: iteration 3
+    Agent->>Model: messages now include the path
+    Model-->>Agent: tool_calls - read_file
+    Agent->>Fn: open and read the file
+    Fn-->>Agent: file contents
+    Note over Agent: append result to messages
 
-    Note over Loop: iteration 4
-    Loop->>LLM: messages now include the code
-    LLM-->>Loop: stop - task complete
-    Loop-->>Me: read_file returns the contents, and a plain message if the file is missing
+    Note over Agent: iteration 4
+    Agent->>Model: messages now include the code
+    Model-->>Agent: stop - task complete
+    Agent-->>Me: read_file returns the contents, and a plain message if the file is missing
 ```
 
 **Four round trips. I scripted none of them.**
