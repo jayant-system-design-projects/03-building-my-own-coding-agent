@@ -59,7 +59,7 @@ iteration 4   model: finish_reason = "stop"
                plain message instead of raising if the file is missing."
 ```
 
-Four round trips. I wrote none of those steps. I did not write "first check the OS, then search, then read". I only wrote the loop that lets it keep going, and a dictionary of things it is allowed to ask for. The sequencing is the model's.
+* [ ] Four round trips. I wrote none of those steps. I did not write "first check the OS, then search, then read". I only wrote the loop that lets it keep going, and a dictionary of things it is allowed to ask for. The sequencing is the model's.
 
 That is the moment this project stopped being homework and got interesting.
 
@@ -267,9 +267,9 @@ uv sync
 Put your model access in a `.env`:
 
 ```bash
-OPENROUTER_API_KEY=your_key_here
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_MODEL_NAME=nvidia/nemotron-3-ultra-550b-a55b:free
+MODEL_API_KEY=your_key_here
+MODEL_BASE_URL=https://openrouter.ai/api/v1
+MODEL_NAME=nvidia/nemotron-3-ultra-550b-a55b:free
 MAX_ITERATIONS_LOW_MODE=5
 MAX_ITERATIONS_MEDIUM_MODE=5
 MAX_ITERATIONS_HIGH_MODE=15
